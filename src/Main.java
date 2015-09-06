@@ -1,16 +1,46 @@
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 
 public class Main {
 
     public static void main(String[] args) {
 
-        File file = new File("test-data.txt");
+        String filename = "test-data.txt";
 
-        byte[] bytes = readContentIntoByteArray(file);
+        try {
+            BitInputStream bis = new BitInputStream(filename);
 
-        System.out.println(Arrays.toString(bytes));
+            int bit;
+            boolean isEOF = false;
+
+            long numBits = 0;
+
+
+            while (!isEOF) {
+                bit = bis.readBit();
+
+                isEOF = bit == -1;
+                if (!isEOF) {
+                    numBits++;
+                    System.out.print(bit);
+                    if (numBits % 8 == 0) {
+                        System.out.println();
+                    }
+                }
+            }
+
+            System.out.println();
+            System.out.println(numBits);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+
     }
 
     private static byte[] readContentIntoByteArray(File file) {
