@@ -1,5 +1,7 @@
+import javax.xml.crypto.Data;
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -7,11 +9,12 @@ public class Main {
 
     public static final int NUM_BITS_IN_LONG = 64;
 
-    public static void main(String[] args) throws Exception {
-//        testBitInputAndOutputStreams();
+    public static void main(String[] args) throws Throwable {
+        testBitInputAndOutputStreams();
 
         String filenameInput = "test-data.txt";
         String filenameCompressed = "test-data.compressed";
+        String filenameDecompressed = "test-data.decompressed";
         BitInputStream bis = new BitInputStream(filenameInput);
 
         // map of <bit sequence, count>
@@ -46,10 +49,48 @@ public class Main {
 
 
         // decode compressed file with tree
+        BitInputStream inputCompressedFile = new BitInputStream(filenameCompressed);
+        BitOutputStream outputDecompressedFile = new BitOutputStream(filenameDecompressed);
+        decompressData(inputCompressedFile, root, filenameDecompressed);
     }
 
-    private static void compressData(BitNode treeRoot, String fileToCompress, String compressedFile) throws Exception {
+    private static void decompressData(BitInputStream inputCompressedFile, BitNode treeRoot, String outputDecompressedFile) throws IOException {
+        FileOutputStream fileOutputStream = new FileOutputStream(outputDecompressedFile);
+        DataOutputStream dataOutputStream = new DataOutputStream(fileOutputStream);
+
+        boolean isEOF = false;
+
+        BitNode root = treeRoot;
+        BitNode current = root;
+
+        while (!isEOF) {
+            int nextBit = inputCompressedFile.readBit();
+
+            if (nextBit == -1) {
+                // TODO end of file -- what to do? special cases? leftover data that didn't fit into long?
+                isEOF = true;
+                break;
+            }
+
+            if (nextBit == 0) {
+                current = current.left;
+            } else {
+                current = current.right;
+            }
+
+            if (current.left == null && current.right == null) {
+                // found a leaf, output and reset current
+                dataOutputStream.writeLong(current.data);
+                current = root;
+            }
+        }
+
+        dataOutputStream.close();
+    }
+
+    private static void compressData(BitNode treeRoot, String fileToCompress, String compressedFile) throws Throwable {
         BitInputStream bitInputStream = new BitInputStream(fileToCompress);
+        BitOutputStream bitOutputStream = new BitOutputStream(compressedFile);
 
         while (true) {
             long nextLong = getNextLong(bitInputStream);
@@ -59,44 +100,54 @@ public class Main {
             }
 
             String compressedBitRepresentation = getCompressedBitRepresentation(treeRoot, nextLong);
+            System.out.println(compressedBitRepresentation);
 
-            writeBitRepresentation(compressedBitRepresentation, compressedFile);
+            writeBitRepresentation(compressedBitRepresentation, bitOutputStream);
         }
 
     }
 
-    private static void writeBitRepresentation(String bitSequence, String file) throws Exception {
-        BitOutputStream bitOutputStream = new BitOutputStream(file);
+    private static void writeBitRepresentation(String bitSequence, BitOutputStream bitOutputStream) throws Exception {
         for (int i = 0; i < bitSequence.length(); i++) {
-            char bit = bitSequence.charAt(i);
-            bitOutputStream.writeBit((int) bit);
+            int bit = bitSequence.charAt(i) == '1' ? 1 : 0;
+            bitOutputStream.writeBit(bit);
+//            System.out.print(bit);
         }
     }
 
     // TODO not hanndling big enough numbers for how big the tree will get..?
     private static String getCompressedBitRepresentation(BitNode treeRoot, long data) {
-        return inOrderTraversalSearch(treeRoot, data, "");
+//        String bitSequence;
+
+
+        return inOrderTraversalSearch(treeRoot, data);
     }
 
-    private static String inOrderTraversalSearch(BitNode root, long data, String bitSequence) {
+    private static String inOrderTraversalSearch(BitNode root, long data) {
         if (root == null) {
-            return "not found";
+            return "NOT FOUND";
         }
 
         if (root.data == data) {
-            return "found";
+            return root.bitSequence;
         }
 
-        String leftResult = inOrderTraversalSearch(root.left, data, bitSequence + "0");
-        String rightResult = inOrderTraversalSearch(root.right, data, bitSequence + "1");
+        // DEBUG
+//        if (root.left != null) {
+//            System.out.println("Left: " + root.left.bitSequence);
+//        }
+//
+//        if (root.right != null) {
+//            System.out.println("Right: " + root.right.bitSequence);
+//        }
 
-        if (leftResult.equals("found")) {
-            return bitSequence + "0";
-        } else if (rightResult.equals("found")) {
-            return bitSequence + "1";
+        String leftResult = inOrderTraversalSearch(root.left, data);
+
+        if (!leftResult.equals("NOT FOUND")) {
+            return leftResult;
+        } else {
+            return inOrderTraversalSearch(root.right, data);
         }
-
-        return null;
     }
 
     private static long getNextLong(BitInputStream bis) throws IOException {
@@ -161,8 +212,11 @@ public class Main {
         BitNode current = root;
 
         for (long data : sortedData.keySet()) {
+            String previousBitSeq = current.bitSequence;
             BitNode leftLeaf = new BitNode(data);
+            leftLeaf.bitSequence = previousBitSeq + "0";
             BitNode rightLeaf = new BitNode();
+            rightLeaf.bitSequence = previousBitSeq + "1";
             current.left = leftLeaf;
             current.right = rightLeaf;
             current = current.right;
