@@ -1,16 +1,16 @@
-import javax.xml.crypto.Data;
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.*;
+import java.io.DataOutputStream;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Main {
 
     public static final int NUM_BITS_IN_LONG = 64;
 
     public static void main(String[] args) throws Throwable {
-        testBitInputAndOutputStreams();
+        Tests.testBitInputAndOutputStreams();
 
         String filenameInput = "test-data.txt";
         String filenameCompressed = "test-data.compressed";
@@ -27,18 +27,18 @@ public class Main {
                 break;
             }
 
-            addDataToMap(bitMap, nextLong);
+            Util.addDataToMap(bitMap, nextLong);
 
             // TODO wrong number of bits what to do; make tree
         }
         System.out.println(bitMap);
 
         // sort data
-        Map<Long, Integer> sortedData = sortByValues(bitMap);
+        Map<Long, Integer> sortedData = Util.sortByValues(bitMap);
         System.out.println(sortedData);
 
         // build and output tree to file
-        BitNode root = buildTree(sortedData);
+        BitNode root = buildImbalancedTree(sortedData);
         String treeOutputFile = "output-tree.table";
         outputTreeToFile(root, treeOutputFile);
 
@@ -50,13 +50,53 @@ public class Main {
 
         // decode compressed file with tree
         BitInputStream inputCompressedFile = new BitInputStream(filenameCompressed);
-        BitOutputStream outputDecompressedFile = new BitOutputStream(filenameDecompressed);
+//        BitOutputStream outputDecompressedFile = new BitOutputStream(filenameDecompressed);
         decompressData(inputCompressedFile, root, filenameDecompressed);
+
+
+        // write long test
+//        writeLongTest();
     }
 
-    private static void decompressData(BitInputStream inputCompressedFile, BitNode treeRoot, String outputDecompressedFile) throws IOException {
-        FileOutputStream fileOutputStream = new FileOutputStream(outputDecompressedFile);
+    private static void writeLongTest() throws Exception {
+        FileOutputStream fileOutputStream = new FileOutputStream("writelongtest.txt");
         DataOutputStream dataOutputStream = new DataOutputStream(fileOutputStream);
+
+        long testLong = 62L;
+        System.out.println(Long.toBinaryString(testLong));
+
+        BitOutputStream bitOutputStream = new BitOutputStream("writelongtest.txt");
+        writeLong(bitOutputStream, testLong);
+
+//        fileOutputStream.write();
+//        dataOutputStream.writeLong(testLong);
+
+
+        BitInputStream bitInputStream = new BitInputStream("writelongtest.txt");
+        while (true) {
+            int bit = bitInputStream.readBit();
+
+            if (bit != -1) {
+                System.out.print(bit);
+            } else {
+                break;
+            }
+
+        }
+    }
+
+    private static void writeLong(BitOutputStream bitOutputStream, long data) throws Exception {
+        String binaryString = Util.padLongBinaryString(data);
+
+        for (int i = 0; i < binaryString.length(); i++) {
+            int nextBit = binaryString.charAt(i) == '0' ? 0 : 1;
+            bitOutputStream.writeBit(nextBit);
+        }
+    }
+
+    private static void decompressData(BitInputStream inputCompressedFile, BitNode treeRoot, String outputDecompressedFile) throws Exception {
+
+        BitOutputStream bitOutputStream = new BitOutputStream(outputDecompressedFile);
 
         boolean isEOF = false;
 
@@ -80,12 +120,11 @@ public class Main {
 
             if (current.left == null && current.right == null) {
                 // found a leaf, output and reset current
-                dataOutputStream.writeLong(current.data);
+                writeLong(bitOutputStream, current.data);
                 current = root;
             }
         }
 
-        dataOutputStream.close();
     }
 
     private static void compressData(BitNode treeRoot, String fileToCompress, String compressedFile) throws Throwable {
@@ -207,7 +246,7 @@ public class Main {
      * @param sortedData
      * @return
      */
-    private static BitNode buildTree(Map<Long, Integer> sortedData) {
+    private static BitNode buildImbalancedTree(Map<Long, Integer> sortedData) {
         BitNode root = new BitNode();
         BitNode current = root;
 
@@ -223,95 +262,6 @@ public class Main {
         }
 
         return root;
-    }
-
-    private static HashMap sortByValues(HashMap map) {
-        List list = new LinkedList(map.entrySet());
-        // Defined Custom Comparator here
-        Collections.sort(list, new Comparator() {
-            public int compare(Object o1, Object o2) {
-                return -((Comparable) ((Map.Entry) (o1)).getValue())
-                        .compareTo(((Map.Entry) (o2)).getValue()); // minus to sort largest to smallest
-            }
-        });
-
-        // Here I am copying the sorted list in HashMap
-        // using LinkedHashMap to preserve the insertion order
-        HashMap sortedHashMap = new LinkedHashMap();
-        for (Iterator it = list.iterator(); it.hasNext();) {
-            Map.Entry entry = (Map.Entry) it.next();
-            sortedHashMap.put(entry.getKey(), entry.getValue());
-        }
-        return sortedHashMap;
-    }
-
-    private static void addDataToMap(HashMap<Long, Integer> map, Long data) {
-        if (map.get(data) == null) {
-            map.put(data, 1);
-        } else {
-            map.put(data, map.get(data) + 1);
-        }
-    }
-
-    private static void testBitInputAndOutputStreams() throws Exception {
-        String filenameInput = "test-data.txt";
-        String filenameOutput = "test-data-out.txt";
-
-        ArrayList<Integer> bits = new ArrayList<>();
-        BitInputStream bis = new BitInputStream(filenameInput);
-        BitOutputStream bos;
-        int bit;
-        boolean isEOF = false;
-        long numBits = 0;
-
-        // test input bit stream
-        while (!isEOF) {
-            bit = bis.readBit();
-            isEOF = bit == -1;
-
-            if (!isEOF) {
-                numBits++;
-                System.out.print(bit);
-                bits.add(bit);
-                if (numBits % 8 == 0) {
-                    System.out.println();
-                }
-            }
-        }
-
-        System.out.println();
-        System.out.println(numBits);
-
-        // test output bit stream
-        bos = new BitOutputStream(filenameOutput);
-        for (int outBit : bits) {
-            bos.writeBit(outBit);
-        }
-
-        // compare output and input files
-        File inFile = new File(filenameInput);
-        File outFile = new File(filenameInput);
-
-        System.out.println();
-        if (inFile.hashCode() == outFile.hashCode()) {
-            System.out.println("Read and write of data without alteration was successful!");
-        } else {
-            System.out.println("Error reading or writing data with BitInput/OutputStreams");
-        }
-    }
-
-    private static byte[] readContentIntoByteArray(File file) {
-        FileInputStream fileInputStream;
-        byte[] bFile = new byte[(int) file.length()];
-        try {
-            //convert file into array of bytes
-            fileInputStream = new FileInputStream(file);
-            fileInputStream.read(bFile);
-            fileInputStream.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return bFile;
     }
 
 }
